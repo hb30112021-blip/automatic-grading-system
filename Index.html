@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auto-grading-system</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      color: #0ff;
+      font-family: monospace;
+      text-align: center;
+    }
+
+    .app {
+      max-width: 420px;
+      margin: auto;
+      padding: 15px;
+    }
+
+    h1 {
+      text-shadow: 0 0 10px #0ff;
+    }
+
+    input, textarea, button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 12px;
+      background: #111;
+      color: #0ff;
+      border: 2px solid #0ff;
+      border-radius: 8px;
+      font-family: monospace;
+      box-sizing: border-box;
+    }
+
+    button {
+      background: #0ff;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    img {
+      width: 100%;
+      max-height: 250px;
+      margin-top: 10px;
+      border: 2px solid #0ff;
+      border-radius: 8px;
+      object-fit: contain;
+    }
+
+    pre {
+      background: #111;
+      padding: 10px;
+      border: 2px solid #0ff;
+      border-radius: 8px;
+      text-align: left;
+      white-space: pre-wrap;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <h1>Auto-grading-system</h1>
+
+    <h3>📸 Take / Upload Answer Sheet</h3>
+    <input type="file" id="imageInput" accept="image/*" capture="environment">
+    <img id="preview">
+
+    <h3>📚 Teacher Knowledge Base (one answer per line)</h3>
+    <textarea id="knowledge" placeholder="Paris is the capital of France
+Force equals mass times acceleration
+Speed of light is 299792458 m/s"></textarea>
+
+    <button onclick="processImage()">Read, Analyze & Grade</button>
+
+    <h3>📊 Result</h3>
+    <pre id="result">Waiting...</pre>
+  </div>
+
+  <!-- OCR Library -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <script>
+    const imageInput = document.getElementById("imageInput");
+    const preview = document.getElementById("preview");
+    const resultBox = document.getElementById("result");
+
+    imageInput.addEventListener("change", () => {
+      const file = imageInput.files[0];
+      if (!file) return;
+      preview.src = URL.createObjectURL(file);
+    });
+
+    async function processImage() {
+      if (!imageInput.files[0]) {
+        alert("Please take or upload a picture first.");
+        return;
+      }
+
+      resultBox.textContent = "Reading image... Please wait.";
+
+      const { data: { text } } = await Tesseract.recognize(
+        imageInput.files[0],
+        "eng"
+      );
+
+      ragGrade(text);
+    }
+
+    // -------- RAG-BASED LOGIC --------
+
+    function similarity(a, b) {
+      const wa = new Set(a.toLowerCase().split(/\W+/));
+      const wb = new Set(b.toLowerCase().split(/\W+/));
+      let common = 0;
+      wa.forEach(w => { if (wb.has(w)) common++; });
+      return common / Math.max(wa.size, wb.size);
+    }
+
+    function ragGrade(ocrText) {
+      const studentAnswers = ocrText
+        .split("\n")
+        .map(x => x.trim())
+        .filter(x => x.length > 3);
+
+      const knowledge = document.getElementById("knowledge")
+        .value.split("\n")
+        .map(x => x.trim())
+        .filter(x => x.length > 3);
+
+      let score = 0;
+      let output = "";
+      const total = Math.min(studentAnswers.length, knowledge.length);
+
+      for (let i = 0; i < total; i++) {
+        let bestMatch = "";
+        let bestScore = 0;
+
+        knowledge.forEach(k => {
+          const s = similarity(studentAnswers[i], k);
+          if (s > bestScore) {
+            bestScore = s;
+            bestMatch = k;
+          }
+        });
+
+        if (bestScore > 0.75) {
+          score++;
+          output += `Q${i + 1}: ✅ Correct\n`;
+        } else if (bestScore > 0.45) {
+          score += 0.5;
+          output += `Q${i + 1}: ⚠️ Partial\nYour: ${studentAnswers[i]}\nCorrect: ${bestMatch}\n\n`;
+        } else {
+          output += `Q${i + 1}: ❌ Wrong\nYour: ${studentAnswers[i]}\nCorrect: ${bestMatch}\n\n`;
+        }
+      }
+
+      const percent = ((score / total) * 100).toFixed(1);
+      let grade =
+        percent >= 90 ? "A+" :
+        percent >= 80 ? "A" :
+        percent >= 70 ? "B" :
+        percent >= 60 ? "C" : "FAIL";
+
+      output += `\nScore: ${score}/${total}\nPercentage: ${percent}%\nGrade: ${grade}`;
+      resultBox.textContent = output;
+    }
+  </script>
+</body>
+</html>
